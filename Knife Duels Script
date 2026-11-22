@@ -1,0 +1,220 @@
+-- language: Luau, file: utility_panel.lua, target: Roblox PC Luau runtime
+-- *bind game-specific controller/remote names and asset IDs per target build*
+
+local Players = cloneref(game:GetService("Players"))
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local RunService = cloneref(game:GetService("RunService"))
+local CoreGui = cloneref(game:GetService("CoreGui"))
+
+local State = {
+	AutoSwing = false,
+	SkinSwap = false,
+	RangeStuds = 16,
+	SkinName = "Default",
+	TextureId = "",
+	PanelVisible = true,
+}
+
+local Controller = {
+	Connections = {},
+}
+
+function Controller:SafeWait(parent, name, timeout)
+	if not parent then
+		return nil
+	end
+	return parent:WaitForChild(name, timeout or 4)
+end
+
+function Controller:SafeRequire(moduleObj)
+	if not moduleObj or not moduleObj:IsA("ModuleScript") then
+		return nil
+	end
+	local ok, mod = pcall(require, moduleObj)
+	return ok and mod or nil
+end
+
+function Controller:ApplyCosmeticsToTool(tool)
+	if not State.SkinSwap or not tool or not tool:IsA("Tool") then
+		return
+	end
+	pcall(function()
+		tool:SetAttribute("SelectedSkin", State.SkinName)
+		if State.TextureId ~= "" then
+			for _, part in ipairs(tool:GetDescendants()) do
+				if part:IsA("BasePart") then
+					for _, child in ipairs(part:GetChildren()) do
+						if child:IsA("Texture") or child:IsA("Decal") then
+							child.Texture = State.TextureId
+						end
+					end
+				elseif part:IsA("SpecialMesh") then
+					part.TextureId = State.TextureId
+				end
+			end
+		end
+	end)
+end
+
+function Controller:BindToolWatchers()
+	local lp = Players.LocalPlayer
+	if not lp then
+		return
+	end
+
+	local function watch(container)
+		if not container then
+			return
+		end
+		for _, child in ipairs(container:GetChildren()) do
+			if child:IsA("Tool") then
+				self:ApplyCosmeticsToTool(child)
+			end
+		end
+		table.insert(self.Connections, container.ChildAdded:Connect(function(child)
+			if child:IsA("Tool") then
+				task.wait(0.05)
+				self:ApplyCosmeticsToTool(child)
+			end
+		end))
+	end
+
+	watch(lp:FindFirstChildOfClass("Backpack"))
+	if lp.Character then
+		watch(lp.Character)
+	end
+
+	table.insert(self.Connections, lp.CharacterAdded:Connect(function(char)
+		task.wait(0.1)
+		watch(lp:FindFirstChildOfClass("Backpack"))
+		watch(char)
+	end))
+end
+
+function Controller:StartLoop()
+	local lp = Players.LocalPlayer
+	table.insert(self.Connections, RunService.Heartbeat:Connect(function()
+		if not State.AutoSwing or not lp or not lp.Character then
+			return
+		end
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr ~= lp and plr.Character then
+				local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+				local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+				if hrp and hum and hum.Health > 0 then
+					local dist = lp:DistanceFromCharacter(hrp.Position)
+					if dist > 0 and dist <= State.RangeStuds then
+						-- Hook target combat/action dispatch here when testing mechanics
+					end
+				end
+			end
+		end
+	end))
+end
+
+function Controller:BuildGui()
+	local existing = CoreGui:FindFirstChild("UtilityControlGui")
+	if existing then
+		existing:Destroy()
+	end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "UtilityControlGui"
+	gui.ResetOnSpawn = false
+	gui.Parent = CoreGui
+
+	local panel = Instance.new("Frame")
+	panel.Size = UDim2.fromOffset(250, 175)
+	panel.Position = UDim2.fromScale(0.04, 0.3)
+	panel.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+	panel.BorderSizePixel = 0
+	panel.Active = true
+	panel.Draggable = true
+	panel.Parent = gui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = panel
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -16, 0, 28)
+	title.Position = UDim2.fromOffset(8, 6)
+	title.BackgroundTransparency = 1
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextColor3 = Color3.fromRGB(235, 240, 250)
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 13
+	title.Text = "UTILITY PANEL"
+	title.Parent = panel
+
+	local swingBtn = Instance.new("TextButton")
+	swingBtn.Size = UDim2.new(1, -16, 0, 32)
+	swingBtn.Position = UDim2.fromOffset(8, 40)
+	swingBtn.BackgroundColor3 = Color3.fromRGB(34, 38, 48)
+	swingBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+	swingBtn.Font = Enum.Font.GothamMedium
+	swingBtn.TextSize = 12
+	swingBtn.Text = "Auto Action: OFF"
+	swingBtn.Parent = panel
+
+	local skinBtn = Instance.new("TextButton")
+	skinBtn.Size = UDim2.new(1, -16, 0, 32)
+	skinBtn.Position = UDim2.fromOffset(8, 78)
+	skinBtn.BackgroundColor3 = Color3.fromRGB(34, 38, 48)
+	skinBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+	skinBtn.Font = Enum.Font.GothamMedium
+	skinBtn.TextSize = 12
+	skinBtn.Text = "Skin Swap: OFF"
+	skinBtn.Parent = panel
+
+	local rangeBox = Instance.new("TextBox")
+	rangeBox.Size = UDim2.new(1, -16, 0, 30)
+	rangeBox.Position = UDim2.fromOffset(8, 118)
+	rangeBox.BackgroundColor3 = Color3.fromRGB(26, 29, 37)
+	rangeBox.TextColor3 = Color3.fromRGB(160, 220, 255)
+	rangeBox.Font = Enum.Font.Code
+	rangeBox.TextSize = 12
+	rangeBox.Text = tostring(State.RangeStuds)
+	rangeBox.PlaceholderText = "Range (studs)"
+	rangeBox.Parent = panel
+
+	Instance.new("UICorner", swingBtn).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", skinBtn).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", rangeBox).CornerRadius = UDim.new(0, 6)
+
+	swingBtn.MouseButton1Click:Connect(function()
+		State.AutoSwing = not State.AutoSwing
+		swingBtn.Text = State.AutoSwing and "Auto Action: ON" or "Auto Action: OFF"
+	end)
+
+	skinBtn.MouseButton1Click:Connect(function()
+		State.SkinSwap = not State.SkinSwap
+		skinBtn.Text = State.SkinSwap and "Skin Swap: ON" or "Skin Swap: OFF"
+		if State.SkinSwap then
+			self:BindToolWatchers()
+		end
+	end)
+
+	rangeBox.FocusLost:Connect(function()
+		local parsed = tonumber(rangeBox.Text)
+		if parsed and parsed > 0 then
+			State.RangeStuds = parsed
+		end
+		rangeBox.Text = tostring(State.RangeStuds)
+	end)
+end
+
+function Controller:Init()
+	local lp = Players.LocalPlayer
+	if not lp then
+		return
+	end
+	local scripts = self:SafeWait(lp, "PlayerScripts", 4)
+	self.Controllers = scripts and self:SafeWait(scripts, "Controllers", 4) or nil
+	self.CombatNet = self:SafeWait(ReplicatedStorage, "CombatNet", 4)
+
+	self:BuildGui()
+	self:StartLoop()
+end
+
+Controller:Init()
